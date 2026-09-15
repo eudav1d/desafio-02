@@ -1,120 +1,105 @@
-class _Node:
-    __slots__ = ('code', 'prev', 'next', 'in_queue')
-
-    def __init__(self, code: str):
-        self.code = code
-        self.prev = None
-        self.next = None
-        self.in_queue = True
-
-
 def despachar(log: list[str]) -> list[str]:
-    head = _Node("")
-    tail = _Node("")
-    head.next = tail
-    tail.prev = head
+    # Ponteiros da fila dupla usando dicionários (sentinelas HEAD e TAIL)
+    prox = {'HEAD': 'TAIL'}
+    ant = {'TAIL': 'HEAD'}
 
-    nodes: dict[str, _Node] = {}
-    entregues: list[str] = []
-    undo_stack: list[tuple[str, _Node]] = []
+    pedidos_registrados = set()
+    pedidos_na_fila = set()
+    entregues = []
+    pilha_desfazer = []
 
-    for raw_line in log:
-        idx = raw_line.find('#')
-        line = raw_line[:idx] if idx != -1 else raw_line
-        s = line.strip()
-        if not s:
+    for linha in log:
+        # Remove comentários inline e espaços
+        idx = linha.find('#')
+        if idx != -1:
+            linha = linha[:idx]
+        tokens = linha.split()
+        if not tokens:
             continue
 
-        first_char = s[0]
+        primeiro = tokens[0]
 
-        if first_char == '+':
+        # Normaliza os comandos das versões 1 (+, -, >, <) e 2
+        if primeiro.startswith('+'):
             cmd = 'CHEGA'
-            arg = s[1:].strip().upper()
-        elif first_char == '-':
+            codigo = (tokens[1] if primeiro == '+' and len(tokens) > 1 else primeiro[1:]).upper()
+        elif primeiro.startswith('-'):
             cmd = 'CANCELA'
-            arg = s[1:].strip().upper()
-        elif first_char == '>':
+            codigo = (tokens[1] if primeiro == '-' and len(tokens) > 1 else primeiro[1:]).upper()
+        elif primeiro == '>':
             cmd = 'SAI'
-            arg = ''
-        elif first_char == '<':
+            codigo = ''
+        elif primeiro == '<':
             cmd = 'DESFAZ'
-            arg = ''
+            codigo = ''
         else:
-            parts = s.split(None, 1)
-            op = parts[0].upper()
-            if op == 'CHEGA':
-                cmd = 'CHEGA'
-                arg = parts[1].strip().upper() if len(parts) > 1 else ''
-            elif op == 'SAI':
-                cmd = 'SAI'
-                arg = ''
-            elif op == 'CANCELA':
-                cmd = 'CANCELA'
-                arg = parts[1].strip().upper() if len(parts) > 1 else ''
-            elif op == 'DESFAZ':
-                cmd = 'DESFAZ'
-                arg = ''
-            else:
-                continue
+            cmd = primeiro.upper()
+            codigo = tokens[1].upper() if len(tokens) > 1 else ''
 
         # Regra 1: Chegada
         if cmd == 'CHEGA':
-            if not arg or arg in nodes:
+            if not codigo or codigo in pedidos_registrados:
                 continue
-            node = _Node(arg)
-            prev_node = tail.prev
-            prev_node.next = node
-            node.prev = prev_node
-            node.next = tail
-            tail.prev = node
+            pedidos_registrados.add(codigo)
+            pedidos_na_fila.add(codigo)
 
-            nodes[arg] = node
-            undo_stack.append(('CHEGA', node))
+            # Insere no fim da fila em O(1)
+            ultimo = ant['TAIL']
+            prox[ultimo] = codigo
+            ant[codigo] = ultimo
+            prox[codigo] = 'TAIL'
+            ant['TAIL'] = codigo
+
+            pilha_desfazer.append(('CHEGA', codigo))
 
         # Regra 2: Saída
         elif cmd == 'SAI':
-            if head.next is tail:
+            if prox['HEAD'] == 'TAIL':
                 continue  # Fila vazia
-            node = head.next
-            head.next = node.next
-            node.next.prev = head
-            node.in_queue = False
+            codigo = prox['HEAD']
+            prox['HEAD'] = prox[codigo]
+            ant[prox[codigo]] = 'HEAD'
+            pedidos_na_fila.remove(codigo)
 
-            entregues.append(node.code)
-            undo_stack.append(('SAI', node))
+            entregues.append(codigo)
+            pilha_desfazer.append(('SAI', codigo))
 
         # Regra 3: Cancelamento
         elif cmd == 'CANCELA':
-            node = nodes.get(arg)
-            if node is None or not node.in_queue:
+            if codigo not in pedidos_na_fila:
                 continue
-            node.prev.next = node.next
-            node.next.prev = node.prev
-            node.in_queue = False
+            pedidos_na_fila.remove(codigo)
+            # Remove da fila mantendo referências salvas em ant e prox
+            prox[ant[codigo]] = prox[codigo]
+            ant[prox[codigo]] = ant[codigo]
 
-            undo_stack.append(('CANCELA', node))
+            pilha_desfazer.append(('CANCELA', codigo))
 
         # Regra 4: Desfazer
         elif cmd == 'DESFAZ':
-            if not undo_stack:
+            if not pilha_desfazer:
                 continue
-            last_cmd, node = undo_stack.pop()
+            acao, codigo = pilha_desfazer.pop()
 
-            if last_cmd == 'CHEGA':
-                node.prev.next = node.next
-                node.next.prev = node.prev
-                node.in_queue = False
-                del nodes[node.code]
+            if acao == 'CHEGA':
+                prox[ant[codigo]] = prox[codigo]
+                ant[prox[codigo]] = ant[codigo]
+                pedidos_na_fila.remove(codigo)
+                pedidos_registrados.remove(codigo)
 
-            elif last_cmd == 'SAI':
+            elif acao == 'SAI':
                 entregues.pop()
-                node.prev.next = node
-                node.next.prev = node
-                node.in_queue = True
+                # Devolve ao início da fila
+                prox[codigo] = prox['HEAD']
+                ant[codigo] = 'HEAD'
+                ant[prox['HEAD']] = codigo
+                prox['HEAD'] = codigo
+                pedidos_na_fila.add(codigo)
 
-            elif last_cmd == 'CANCELA':
-                node.prev.next = node
-                node.next.prev = node
-                node.in_queue = True
+            elif acao == 'CANCELA':
+                # Reconecta na posição original
+                prox[ant[codigo]] = codigo
+                ant[prox[codigo]] = codigo
+                pedidos_na_fila.add(codigo)
 
     return entregues
