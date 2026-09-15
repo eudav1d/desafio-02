@@ -1,0 +1,4 @@
+# Pedidos entregues, na ordem em que saíram, para exemplos/log-antigo.txt
+P001
+P002
+P004

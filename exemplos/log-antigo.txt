@@ -1,0 +1,29 @@
+# Log de despacho · Mercadão do Cariri · exportado do sistema antigo
+#
+# O sistema teve duas versões, e o log mistura as duas:
+#   versão 1 (até 2023):  +código  chegada      >  saída
+#                         -código  cancelamento  <  desfazer
+#   versão 2:             CHEGA código, SAI, CANCELA código, DESFAZ
+#
+# Quem digitava nem sempre respeitava maiúsculas, minúsculas e espaços.
+
+CHEGA P001
+CHEGA P002
+chega p003
++P004
+SAI                 # motorista: Zé do Baião
+CANCELA P003
+	>
+CHEGA P002          # repetido: o sistema antigo às vezes registrava duas vezes
+<
+- p004
+DESFAZ
+
++ P005              # cliente quer receber antes do lançamento do GTA VI
+Sai                 # conferido no fim do turno
++p006
+cancela P005        # cliente desistiu. Anotado no sistema: "oof"
+>
+<
+  <
+SAI
